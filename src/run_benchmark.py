@@ -18,7 +18,7 @@ class APIModel:
         self.requests_per_minute = 300  # Max requests per minute
         self.delay_between_requests = 60 / self.requests_per_minute  # Delay in seco
 
-    def encode_text(self, texts: list, batch_size: int = 128, task_type: str = "RETRIEVAL_DOCUMENT") -> np.ndarray:
+    def encode_text(self, texts: list, batch_size: int = 100, task_type: str = "RETRIEVAL_DOCUMENT") -> np.ndarray:
         logging.info(f"Encoding {len(texts)} texts...")
 
         all_embeddings = []
@@ -55,7 +55,7 @@ class APIModel:
 
         return embeddings_array
 
-    def encode_queries(self, queries: list, batch_size: int = 128, **kwargs) -> np.ndarray:
+    def encode_queries(self, queries: list, batch_size: int = 100, **kwargs) -> np.ndarray:
         #truncated_queries = [query[:256] for query in queries]
         #truncated_queries = ["query: " + query for query in truncated_queries]
         #queries = ["query: "+ query for query in queries]
@@ -64,7 +64,7 @@ class APIModel:
         return query_embeddings
 
 
-    def encode_corpus(self, corpus: list, batch_size: int = 128, **kwargs) -> np.ndarray:
+    def encode_corpus(self, corpus: list, batch_size: int = 100, **kwargs) -> np.ndarray:
         # texts = [doc['text'][:512]  for doc in corpus]
         # texts = ["passage: " + doc for doc in texts]
         # texts = ["passage: "+ doc['text'] for doc in corpus]
@@ -80,7 +80,7 @@ model = APIModel()
 tasks = coir.get_tasks(tasks=["codetrans-dl"])
 
 # Initialize evaluation
-evaluation = COIR(tasks=tasks, batch_size=128)
+evaluation = COIR(tasks=tasks, batch_size=100)
 
 # Run evaluation
 results = evaluation.run(model, output_folder=f"results/gemini")
@@ -108,7 +108,7 @@ for model_name in MODELS_TO_EVALUATE:
 
         # Get the specific task
         tasks = get_tasks(tasks=[task_name])
-        evaluation = COIR(tasks=tasks, batch_size=128)
+        evaluation = COIR(tasks=tasks, batch_size=100)
 
         # Define output folder and run evaluation
         output_folder = f"results/{safe_model_name}"
