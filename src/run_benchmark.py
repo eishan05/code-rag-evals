@@ -48,7 +48,6 @@ class APIModel:
         # Processing texts in batches
         for i in tqdm(range(0, len(texts), batch_size), desc="Encoding batches", unit="batch"):
             batch_texts = texts[i:i + batch_size]
-            print("batch:", {i}, len(batch_texts))
             result = self.go.models.embed_content(
                 model=self.model_name,
                 contents=batch_texts,
@@ -67,7 +66,6 @@ class APIModel:
 
         # Combine all embeddings into a single numpy array
         embeddings_array = np.array(all_embeddings)
-        print(embeddings_array.shape)
 
         # Logging after encoding
         if embeddings_array.size == 0:
@@ -110,7 +108,6 @@ for gemini_model in GEMINI_MODELS_TO_EVALUATE:
 
 print("\n--- Starting Open Model Evaluations ---")
 # --- Step 3: Evaluation Loop ---
-evaluation_results = {}
 for model_name in OPEN_MODELS_TO_EVALUATE:
     safe_model_name = model_name.replace('/', '_')
     print(f"\n{'='*30}\nEvaluating model: {model_name}\n{'='*30}")
@@ -118,20 +115,12 @@ for model_name in OPEN_MODELS_TO_EVALUATE:
     # Load the model
     model = YourCustomDEModel(model_name=model_name)
 
-    for task_name in TASKS_TO_EVALUATE:
-        print(f"\n--- Running task: {task_name} ---")
-
-        # Get the specific task
-        tasks = get_tasks(tasks=[task_name])
-        evaluation = COIR(tasks=tasks, batch_size=BATCH_SIZE)
-
-        # Define output folder and run evaluation
-        output_folder = f"results/{safe_model_name}"
-        os.makedirs(output_folder, exist_ok=True)
-        results = evaluation.run(model, output_folder=output_folder)
-
-        print(f"--- Finished task: {task_name} ---")
-        evaluation_results.update(results)
+    tasks = get_tasks(tasks=TASKS_TO_EVALUATE)
+    evaluation = COIR(tasks=tasks, batch_size=BATCH_SIZE)
+    # Define output folder and run evaluation
+    output_folder = f"results/{safe_model_name}"
+    os.makedirs(output_folder, exist_ok=True)
+    results = evaluation.run(model, output_folder=output_folder)
 
 print("\n✅ All evaluations complete!")
 
@@ -264,11 +253,11 @@ def plot_k1_comparison(task_name, model_list):
 
 print("\n--- Generating Visualizations ---")
 # --- Step 5: Run Visualizations for Each Task ---
-for TASK_TO_VISUALIZE in TASKS_TO_EVALUATE:
-    print(f"\n\n{'#'*40}\n# Visualizing results for: {TASK_TO_VISUALIZE}\n{'#'*40}")
+for task in TASKS_TO_EVALUATE:
+    print(f"\n\n{'#'*40}\n# Visualizing results for: {task}\n{'#'*40}")
     # Plot full comparison
-    plot_full_comparison(TASK_TO_VISUALIZE, OPEN_MODELS_TO_EVALUATE + GEMINI_MODELS_TO_EVALUATE)
+    plot_full_comparison(task, OPEN_MODELS_TO_EVALUATE + GEMINI_MODELS_TO_EVALUATE)
     # Plot K=1 comparison
-    plot_k1_comparison(TASK_TO_VISUALIZE, OPEN_MODELS_TO_EVALUATE + GEMINI_MODELS_TO_EVALUATE)
+    plot_k1_comparison(task, OPEN_MODELS_TO_EVALUATE + GEMINI_MODELS_TO_EVALUATE)
 
 print("\n✅ All tasks complete.")
