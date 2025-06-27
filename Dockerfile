@@ -7,6 +7,15 @@ WORKDIR /app
 # Copy the requirements file into the container from the build context root
 COPY requirements.txt .
 
+# Install Python Essentials
+RUN apt-get update \
+    && apt-get -y upgrade \
+    && apt-get install -y --no-install-recommends \
+        build-essential checkinstall libffi-dev python-dev-is-python3 \
+        libncursesw5-dev libssl-dev \
+        libsqlite3-dev tk-dev libgdbm-dev libc6-dev libbz2-dev \
+    && rm -rf /var/lib/apt/lists/*
+
 # Install the dependencies using pip
 # --no-cache-dir reduces image size by not storing the pip cache
 RUN pip install --no-cache-dir -r requirements.txt

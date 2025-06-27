@@ -1,6 +1,3 @@
 coir-eval
 google-generativeai
-torch
-numpy
 matplotlib
-tqdm
