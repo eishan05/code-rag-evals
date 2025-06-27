@@ -22,4 +22,3 @@ docker run \
   -v "$(pwd)/output_plots":/app/output_plots \
   coir-benchmark
 ```
->>>>>>> 3290b86 (move code from colab to github)
