@@ -19,6 +19,6 @@ sudo docker run \
   --rm \
   -e GOOGLE_API_KEY="YOUR_API_KEY_HERE" \
   -v "$(pwd)/results":/app/results \
-  -v "$(pwd)/output_plots":/app/output_plots \
+  -v "$(pwd)/plots":/app/plots \
   coir-benchmark
 ```

@@ -142,7 +142,7 @@ def load_all_results_for_task(task_name, model_list):
     return all_results
 
 def plot_full_comparison(task_name, model_list):
-    """Generates and shows a plot comparing all models across all K values for a task."""
+    """Generates and saves a plot comparing all models across all K values for a task."""
     comparison_data = load_all_results_for_task(task_name, model_list)
     if not comparison_data:
         print(f"No data to plot for task: {task_name}")
@@ -153,36 +153,54 @@ def plot_full_comparison(task_name, model_list):
     axes = axes.flatten()
     fig.suptitle(f'Model Comparison on "{task_name}" Task', fontsize=20, y=0.95)
 
+    all_k_values_across_metrics = set()
+
     for i, metric_name in enumerate(metric_names):
         ax = axes[i]
+        k_vals_for_metric = set()
         for model_name, metrics in comparison_data.items():
             if metric_name in metrics:
                 values_dict, k_values, scores = metrics[metric_name], [], []
                 for key, score in values_dict.items():
                     match = re.search(r'\d+$', key)
                     if match:
-                        k_values.append(int(match.group()))
+                        k = int(match.group())
+                        k_values.append(k)
                         scores.append(score)
+                        k_vals_for_metric.add(k)
                 if k_values:
                     sorted_pairs = sorted(zip(k_values, scores))
                     k_vals, score_vals = zip(*sorted_pairs)
                     ax.plot(k_vals, score_vals, marker='o', linestyle='-', label=model_name)
+        
+        all_k_values_across_metrics.update(k_vals_for_metric)
 
-        all_k = sorted(list(set(k_vals)))
         ax.set_xscale('log')
-        ax.set_xticks(all_k)
-        ax.set_xticklabels(all_k, rotation=45)
         ax.set_title(f'{metric_name} vs. K', fontsize=16)
         ax.set_xlabel('K (cutoff)', fontsize=12)
         ax.set_ylabel('Score', fontsize=12)
         ax.grid(True, which="both", ls="--", c='0.7')
         ax.legend(fontsize=10)
 
+    # Standardize x-ticks across all subplots
+    sorted_k_vals = sorted(list(all_k_values_across_metrics))
+    for ax in axes:
+        ax.set_xticks(sorted_k_vals)
+        ax.set_xticklabels(sorted_k_vals, rotation=45)
+
     plt.tight_layout(rect=[0, 0, 1, 0.93])
-    plt.show()
+
+    # --- CHANGE: Save the figure instead of showing it ---
+    plots_dir = Path("plots")
+    plots_dir.mkdir(exist_ok=True)
+    save_path = plots_dir / f"{task_name}_full_comparison.png"
+    plt.savefig(save_path, bbox_inches='tight')
+    print(f"Saved full comparison plot to: {save_path}")
+    plt.close(fig)  # Close the figure to free up memory
+
 
 def plot_k1_comparison(task_name, model_list):
-    """Generates and shows a bar chart comparing all models at K=1."""
+    """Generates and saves a bar chart comparing all models at K=1."""
     comparison_data = load_all_results_for_task(task_name, model_list)
     if not comparison_data:
         print(f"No data to plot for task: {task_name}")
@@ -196,8 +214,10 @@ def plot_k1_comparison(task_name, model_list):
         if main_metric == "P":
             main_metric = "Precision"
         for model_name, all_metrics in comparison_data.items():
-            score = all_metrics.get(main_metric, {}).get(metric_key, 0)
-            plot_data[model_name].append(score)
+            # Check if model_name is a key in plot_data before appending
+            if model_name in plot_data:
+                score = all_metrics.get(main_metric, {}).get(metric_key, 0)
+                plot_data[model_name].append(score)
 
     fig, ax = plt.subplots(figsize=(15, 8))
     num_models = len(plot_data)
@@ -209,17 +229,29 @@ def plot_k1_comparison(task_name, model_list):
         bars = ax.bar(pos, scores, bar_width, label=model_name)
         ax.bar_label(bars, padding=3, fmt='%.3f', fontsize=10)
 
-    ax.set_title(f'Model Comparison at K=1 for "{TASK_TO_VISUALIZE}" Task', fontsize=18, pad=20)
+    ax.set_title(f'Model Comparison at K=1 for "{task_name}" Task', fontsize=18, pad=20)
     ax.set_ylabel('Scores', fontsize=14)
     ax.set_xlabel('Metrics', fontsize=14)
     ax.set_xticks(index)
     ax.set_xticklabels(metrics_at_1, fontsize=12)
     ax.legend(title='Models', bbox_to_anchor=(1.04, 1), loc="upper left", fontsize=12)
     ax.yaxis.grid(True, linestyle='--', which='major', color='grey', alpha=.25)
-    ax.set_ylim(bottom=0, top=max(max(s) for s in plot_data.values()) * 1.15 if plot_data else 1)
+    
+    # Dynamically set y-limit
+    max_score = 0
+    if plot_data:
+        max_score = max(max(s) for s in plot_data.values() if s)
+    ax.set_ylim(bottom=0, top=max_score * 1.15 if max_score > 0 else 1)
 
     plt.tight_layout(rect=[0, 0, 0.85, 1])
-    plt.show()
+
+    # --- CHANGE: Save the figure instead of showing it ---
+    plots_dir = Path("plots")
+    plots_dir.mkdir(exist_ok=True)
+    save_path = plots_dir / f"{task_name}_k1_comparison.png"
+    plt.savefig(save_path, bbox_inches='tight')
+    print(f"Saved K=1 comparison plot to: {save_path}")
+    plt.close(fig) # Close the figure to free up memory
 
 print("\n--- Generating Visualizations ---")
 # --- Step 5: Run Visualizations for Each Task ---
