@@ -15,6 +15,7 @@ from tqdm.auto import tqdm
 import time
 from google import genai
 from google.genai import types
+from coir.models import YourCustomDEModel
 
 class APIModel:
     def __init__(self, **kwargs):
