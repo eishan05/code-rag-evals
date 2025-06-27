@@ -96,6 +96,7 @@ print(results)
 # Models and tasks to evaluate
 MODELS_TO_EVALUATE = [
     "sentence-transformers/all-MiniLM-L6-v2",
+    "gemini",
 ]
 TASKS_TO_EVALUATE = ["apps"]
 
