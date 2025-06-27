@@ -2,12 +2,12 @@
 
 ## Running Benchmarks
 
-### Step 1: cd into the root of this repo
+### Step 1: `cd` into the root of this repo
 
 ### Step 2: Build the docker image
 
 ```shell
-docker build -t coir-benchmark .
+sudo docker build -t coir-benchmark .
 ```
 
 ### Step 3: Run the container
@@ -15,7 +15,7 @@ docker build -t coir-benchmark .
 Note that you will have to pass in a Gemini API Key.
 
 ```shell
-docker run \
+sudo docker run \
   --rm \
   -e GOOGLE_API_KEY="YOUR_API_KEY_HERE" \
   -v "$(pwd)/results":/app/results \

@@ -1,6 +1,5 @@
-coir-retrieval
+coir-eval
 google-generativeai
-sentence-transformers
 torch
 numpy
 matplotlib
