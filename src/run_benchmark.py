@@ -14,7 +14,7 @@ from google.genai import types
 class APIModel:
     def __init__(self, **kwargs):
         # Initialize the voyageai client
-        self.go = genai.Client(api_key="AIzaSyDwJvq8WFs8k3gmvgNVzoV24jDPjor42n8")
+        self.go = genai.Client(api_key=os.getenv("GOOGLE_API_KEY"))
         self.requests_per_minute = 300  # Max requests per minute
         self.delay_between_requests = 60 / self.requests_per_minute  # Delay in seco
 
