@@ -20,7 +20,7 @@ from coir.models import YourCustomDEModel
 # Tasks to choose from
 # ["codetrans-dl", "stackoverflow-qa", "apps","codefeedback-mt", "codefeedback-st", "codetrans-contest", "synthetic-
 # text2sql", "cosqa", "codesearchnet", "codesearchnet-ccr"]
-TASKS_TO_EVALUATE = ["apps", "stackoverflow-qa", "codetrans-dl"]
+TASKS_TO_EVALUATE = ["apps", "stackoverflow-qa", "codetrans-dl", "codefeedback-mt", "codefeedback-st", "codetrans-contest", "synthetic-text2sql", "cosqa", "codesearchnet", "codesearchnet-ccr"]
 
 OPEN_MODELS_TO_EVALUATE = [
     "sentence-transformers/all-MiniLM-L6-v2",
