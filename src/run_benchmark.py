@@ -83,7 +83,7 @@ model = APIModel()
 # Get tasks
 #all task ["codetrans-dl", "stackoverflow-qa", "apps","codefeedback-mt", "codefeedback-st", "codetrans-contest", "synthetic-
 # text2sql", "cosqa", "codesearchnet", "codesearchnet-ccr"]
-tasks = coir.get_tasks(tasks=["codetrans-dl"])
+tasks = coir.get_tasks(tasks=["apps"])
 
 # Initialize evaluation
 evaluation = COIR(tasks=tasks, batch_size=100)
