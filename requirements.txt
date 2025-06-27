@@ -1,0 +1,7 @@
+coir-retrieval
+google-generativeai
+sentence-transformers
+torch
+numpy
+matplotlib
+tqdm

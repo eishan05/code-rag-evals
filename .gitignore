@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.pyc
+.env
+venv/
+env/
+
+# Docker
+.dockerignore
+
+# Output files
+results/
+output_plots/
+
+# IDE files
+.vscode/
+.idea/
