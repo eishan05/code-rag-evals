@@ -17,14 +17,30 @@ from google import genai
 from google.genai import types
 from coir.models import YourCustomDEModel
 
+# Tasks to choose from
+# ["codetrans-dl", "stackoverflow-qa", "apps","codefeedback-mt", "codefeedback-st", "codetrans-contest", "synthetic-
+# text2sql", "cosqa", "codesearchnet", "codesearchnet-ccr"]
+TASKS_TO_EVALUATE = ["apps", "stackoverflow-qa", "codetrans-dl"]
+
+OPEN_MODELS_TO_EVALUATE = [
+    "sentence-transformers/all-MiniLM-L6-v2",
+]
+
+GEMINI_MODELS_TO_EVALUATE = [
+    "text-embedding-004",
+]
+
+BATCH_SIZE = 100  # Default batch size for encoding
+
 class APIModel:
-    def __init__(self, **kwargs):
+    def __init__(self, model_name, **kwargs):
         # Initialize the voyageai client
         self.go = genai.Client(api_key=os.getenv("GOOGLE_API_KEY"))
         self.requests_per_minute = 300  # Max requests per minute
         self.delay_between_requests = 60 / self.requests_per_minute  # Delay in seco
+        self.model_name = model_name
 
-    def encode_text(self, texts: list, batch_size: int = 100, task_type: str = "RETRIEVAL_DOCUMENT") -> np.ndarray:
+    def encode_text(self, texts: list, batch_size: int = BATCH_SIZE, task_type: str = "RETRIEVAL_DOCUMENT") -> np.ndarray:
         logging.info(f"Encoding {len(texts)} texts...")
 
         all_embeddings = []
@@ -34,7 +50,7 @@ class APIModel:
             batch_texts = texts[i:i + batch_size]
             print("batch:", {i}, len(batch_texts))
             result = self.go.models.embed_content(
-                model="text-embedding-004",
+                model=self.model_name,
                 contents=batch_texts,
                 config=types.EmbedContentConfig(task_type=task_type))
 
@@ -61,7 +77,7 @@ class APIModel:
 
         return embeddings_array
 
-    def encode_queries(self, queries: list, batch_size: int = 100, **kwargs) -> np.ndarray:
+    def encode_queries(self, queries: list, batch_size: int = BATCH_SIZE, **kwargs) -> np.ndarray:
         #truncated_queries = [query[:256] for query in queries]
         #truncated_queries = ["query: " + query for query in truncated_queries]
         #queries = ["query: "+ query for query in queries]
@@ -70,39 +86,32 @@ class APIModel:
         return query_embeddings
 
 
-    def encode_corpus(self, corpus: list, batch_size: int = 100, **kwargs) -> np.ndarray:
+    def encode_corpus(self, corpus: list, batch_size: int = BATCH_SIZE, **kwargs) -> np.ndarray:
         # texts = [doc['text'][:512]  for doc in corpus]
         # texts = ["passage: " + doc for doc in texts]
         # texts = ["passage: "+ doc['text'] for doc in corpus]
         texts = [doc['text'] for doc in corpus]
         return self.encode_text(texts, batch_size, task_type="RETRIEVAL_DOCUMENT")
 
-# Load the model
-model = APIModel()
+for gemini_model in GEMINI_MODELS_TO_EVALUATE:
+    print(f"Evaluating Gemini model: {gemini_model}")
+    # Initialize the model
+    model = APIModel(model_name=gemini_model)
 
-# Get tasks
-#all task ["codetrans-dl", "stackoverflow-qa", "apps","codefeedback-mt", "codefeedback-st", "codetrans-contest", "synthetic-
-# text2sql", "cosqa", "codesearchnet", "codesearchnet-ccr"]
-tasks = coir.get_tasks(tasks=["apps"])
+    # Get tasks
+    tasks = coir.get_tasks(tasks=TASKS_TO_EVALUATE)
 
-# Initialize evaluation
-evaluation = COIR(tasks=tasks, batch_size=100)
+    # Initialize evaluation
+    evaluation = COIR(tasks=tasks, batch_size=BATCH_SIZE)
 
-# Run evaluation
-results = evaluation.run(model, output_folder=f"results/gemini")
-print(results)
+    # Run evaluation
+    results = evaluation.run(model, output_folder=f"results/{gemini_model}")
+    print(results)
 
-# For open source models, you can use the following code snippet
-# Models and tasks to evaluate
-MODELS_TO_EVALUATE = [
-    "sentence-transformers/all-MiniLM-L6-v2",
-]
-TASKS_TO_EVALUATE = ["apps"]
-
-print("\n--- Starting Model Evaluations ---")
+print("\n--- Starting Open Model Evaluations ---")
 # --- Step 3: Evaluation Loop ---
 evaluation_results = {}
-for model_name in MODELS_TO_EVALUATE:
+for model_name in OPEN_MODELS_TO_EVALUATE:
     safe_model_name = model_name.replace('/', '_')
     print(f"\n{'='*30}\nEvaluating model: {model_name}\n{'='*30}")
 
@@ -114,7 +123,7 @@ for model_name in MODELS_TO_EVALUATE:
 
         # Get the specific task
         tasks = get_tasks(tasks=[task_name])
-        evaluation = COIR(tasks=tasks, batch_size=100)
+        evaluation = COIR(tasks=tasks, batch_size=BATCH_SIZE)
 
         # Define output folder and run evaluation
         output_folder = f"results/{safe_model_name}"
@@ -125,12 +134,6 @@ for model_name in MODELS_TO_EVALUATE:
         evaluation_results.update(results)
 
 print("\n✅ All evaluations complete!")
-
-MODELS_TO_EVALUATE = [
-    "sentence-transformers/all-MiniLM-L6-v2",
-    "gemini",
-]
-TASKS_TO_EVALUATE = ["apps"]
 
 def load_all_results_for_task(task_name, model_list):
     """Loads all result files for a given task from the results directory."""
@@ -263,7 +266,9 @@ print("\n--- Generating Visualizations ---")
 # --- Step 5: Run Visualizations for Each Task ---
 for TASK_TO_VISUALIZE in TASKS_TO_EVALUATE:
     print(f"\n\n{'#'*40}\n# Visualizing results for: {TASK_TO_VISUALIZE}\n{'#'*40}")
-    plot_full_comparison(TASK_TO_VISUALIZE, MODELS_TO_EVALUATE)
-    plot_k1_comparison(TASK_TO_VISUALIZE, MODELS_TO_EVALUATE)
+    # Plot full comparison
+    plot_full_comparison(TASK_TO_VISUALIZE, OPEN_MODELS_TO_EVALUATE + GEMINI_MODELS_TO_EVALUATE)
+    # Plot K=1 comparison
+    plot_k1_comparison(TASK_TO_VISUALIZE, OPEN_MODELS_TO_EVALUATE + GEMINI_MODELS_TO_EVALUATE)
 
 print("\n✅ All tasks complete.")
