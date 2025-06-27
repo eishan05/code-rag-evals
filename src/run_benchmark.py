@@ -96,7 +96,6 @@ print(results)
 # Models and tasks to evaluate
 MODELS_TO_EVALUATE = [
     "sentence-transformers/all-MiniLM-L6-v2",
-    "gemini",
 ]
 TASKS_TO_EVALUATE = ["apps"]
 
@@ -126,6 +125,12 @@ for model_name in MODELS_TO_EVALUATE:
         evaluation_results.update(results)
 
 print("\n✅ All evaluations complete!")
+
+MODELS_TO_EVALUATE = [
+    "sentence-transformers/all-MiniLM-L6-v2",
+    "gemini",
+]
+TASKS_TO_EVALUATE = ["apps"]
 
 def load_all_results_for_task(task_name, model_list):
     """Loads all result files for a given task from the results directory."""
