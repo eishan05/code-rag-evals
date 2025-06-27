@@ -1,248 +1,225 @@
-import os
-import json
-import re
-import time
-import logging
-from pathlib import Path
-from typing import List, Dict
-
-# --- Dependency Imports ---
 import coir
-import numpy as np
-import matplotlib
-# Use a non-interactive backend suitable for containers without a GUI
-matplotlib.use('Agg')
-import matplotlib.pyplot as plt
-from tqdm.auto import tqdm
-
 from coir.data_loader import get_tasks
 from coir.evaluation import COIR
-from coir.models import HFModel
+import torch
+import numpy as np
+import logging
+from transformers import AutoTokenizer, AutoModel
+from typing import List, Dict
+from tqdm.auto import tqdm
+import time
+from google import genai
+from google.genai import types
 
-try:
-    from google import generativeai as genai
-except ImportError:
-    print("Google Generative AI library not found. It should be installed via requirements.txt.")
-    genai = None
+class APIModel:
+    def __init__(self, **kwargs):
+        # Initialize the voyageai client
+        self.go = genai.Client(api_key="AIzaSyDwJvq8WFs8k3gmvgNVzoV24jDPjor42n8")
+        self.requests_per_minute = 300  # Max requests per minute
+        self.delay_between_requests = 60 / self.requests_per_minute  # Delay in seco
 
-# --- Configuration ---
-# TODO(eishanlawrence): Make this configurable through flags.
+    def encode_text(self, texts: list, batch_size: int = 128, task_type: str = "RETRIEVAL_DOCUMENT") -> np.ndarray:
+        logging.info(f"Encoding {len(texts)} texts...")
+
+        all_embeddings = []
+        start_time = time.time()
+        # Processing texts in batches
+        for i in tqdm(range(0, len(texts), batch_size), desc="Encoding batches", unit="batch"):
+            batch_texts = texts[i:i + batch_size]
+            print("batch:", {i}, len(batch_texts))
+            result = self.go.models.embed_content(
+                model="text-embedding-004",
+                contents=batch_texts,
+                config=types.EmbedContentConfig(task_type=task_type))
+
+            batch_embeddings = []  # Assume the API directly returns embeddings
+            for i in range(len(result.embeddings)):
+              batch_embeddings.append(result.embeddings[i].values)
+
+            all_embeddings.extend(batch_embeddings)
+            # Ensure we do not exceed rate limits
+            time_elapsed = time.time() - start_time
+            if time_elapsed < self.delay_between_requests:
+                time.sleep(self.delay_between_requests - time_elapsed)
+                start_time = time.time()
+
+        # Combine all embeddings into a single numpy array
+        embeddings_array = np.array(all_embeddings)
+        print(embeddings_array.shape)
+
+        # Logging after encoding
+        if embeddings_array.size == 0:
+            logging.error("No embeddings received.")
+        else:
+            logging.info(f"Encoded {len(embeddings_array)} embeddings.")
+
+        return embeddings_array
+
+    def encode_queries(self, queries: list, batch_size: int = 128, **kwargs) -> np.ndarray:
+        #truncated_queries = [query[:256] for query in queries]
+        #truncated_queries = ["query: " + query for query in truncated_queries]
+        #queries = ["query: "+ query for query in queries]
+
+        query_embeddings = self.encode_text(queries, batch_size, task_type="RETRIEVAL_QUERY")
+        return query_embeddings
+
+
+    def encode_corpus(self, corpus: list, batch_size: int = 128, **kwargs) -> np.ndarray:
+        # texts = [doc['text'][:512]  for doc in corpus]
+        # texts = ["passage: " + doc for doc in texts]
+        # texts = ["passage: "+ doc['text'] for doc in corpus]
+        texts = [doc['text'] for doc in corpus]
+        return self.encode_text(texts, batch_size, task_type="RETRIEVAL_DOCUMENT")
+
+# Load the model
+model = APIModel()
+
+# Get tasks
+#all task ["codetrans-dl", "stackoverflow-qa", "apps","codefeedback-mt", "codefeedback-st", "codetrans-contest", "synthetic-
+# text2sql", "cosqa", "codesearchnet", "codesearchnet-ccr"]
+tasks = coir.get_tasks(tasks=["codetrans-dl"])
+
+# Initialize evaluation
+evaluation = COIR(tasks=tasks, batch_size=128)
+
+# Run evaluation
+results = evaluation.run(model, output_folder=f"results/gemini")
+print(results)
+
+# For open source models, you can use the following code snippet
+# Models and tasks to evaluate
 MODELS_TO_EVALUATE = [
-    "gemini",
     "sentence-transformers/all-MiniLM-L6-v2",
-    # "Salesforce/SFR-Embedding-Code-400M_R",
 ]
 TASKS_TO_EVALUATE = ["apps"]
 
-# Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+print("\n--- Starting Model Evaluations ---")
+# --- Step 3: Evaluation Loop ---
+evaluation_results = {}
+for model_name in MODELS_TO_EVALUATE:
+    safe_model_name = model_name.replace('/', '_')
+    print(f"\n{'='*30}\nEvaluating model: {model_name}\n{'='*30}")
 
+    # Load the model
+    model = YourCustomDEModel(model_name=model_name)
 
-# --- Model Definitions ---
-class GeminiAPIModel:
-    """
-    A wrapper for the Google Gemini API (text-embedding-004) to be used with COIR.
-    Reads the API key from the GOOGLE_API_KEY environment variable.
-    """
-    def __init__(self, **kwargs):
-        if not genai:
-            raise ImportError("Google Generative AI SDK is required for GeminiAPIModel.")
-        
-        api_key = os.getenv("GOOGLE_API_KEY")
-        if not api_key:
-            raise ValueError("GOOGLE_API_KEY environment variable not set. Please set it to your API key.")
-        
-        genai.configure(api_key=api_key)
-        self.model_name = "models/text-embedding-004"
-        self.requests_per_minute = 300  # Max requests per minute for text-embedding-004
-        self.delay_between_requests = 60 / self.requests_per_minute
+    for task_name in TASKS_TO_EVALUATE:
+        print(f"\n--- Running task: {task_name} ---")
 
-    def encode_text(self, texts: list, batch_size: int, task_type: str) -> np.ndarray:
-        logging.info(f"Encoding {len(texts)} texts with task_type='{task_type}'...")
-        all_embeddings = []
-        for i in tqdm(range(0, len(texts), batch_size), desc=f"Encoding ({task_type})", unit="batch"):
-            batch_texts = texts[i:i + batch_size]
-            try:
-                result = genai.embed_content(
-                    model=self.model_name, content=batch_texts, task_type=task_type
-                )
-                all_embeddings.extend(result['embedding'])
-            except Exception as e:
-                logging.error(f"An API error occurred on a batch: {e}")
-                # Add zero vectors for the failed batch to avoid downstream errors
-                all_embeddings.extend([np.zeros(768)] * len(batch_texts)) # Assumes 768 dimensions for gemini-004
-            
-            # Simple rate limiting
-            time.sleep(self.delay_between_requests)
-            
-        return np.array(all_embeddings, dtype=np.float32)
+        # Get the specific task
+        tasks = get_tasks(tasks=[task_name])
+        evaluation = COIR(tasks=tasks, batch_size=128)
 
-    def encode_queries(self, queries: List[str], batch_size: int = 100, **kwargs) -> np.ndarray:
-        return self.encode_text(queries, batch_size=batch_size, task_type="RETRIEVAL_QUERY")
+        # Define output folder and run evaluation
+        output_folder = f"results/{safe_model_name}"
+        os.makedirs(output_folder, exist_ok=True)
+        results = evaluation.run(model, output_folder=output_folder)
 
-    def encode_corpus(self, corpus: List[Dict[str, str]], batch_size: int = 100, **kwargs) -> np.ndarray:
-        texts = [doc['text'] for doc in corpus]
-        return self.encode_text(texts, batch_size=batch_size, task_type="RETRIEVAL_DOCUMENT")
+        print(f"--- Finished task: {task_name} ---")
+        evaluation_results.update(results)
 
+print("\n✅ All evaluations complete!")
 
-# --- Evaluation Function ---
-def run_evaluations(model_list: List[str], task_list: List[str]):
-    """
-    Runs the COIR evaluation for each model and task combination.
-    """
-    print("\n--- Starting Model Evaluations ---")
-    for model_name in model_list:
-        safe_model_name = model_name.replace('/', '_')
-        print(f"\n{'='*40}\nEvaluating model: {model_name}\n{'='*40}")
-        try:
-            if model_name.lower() == "gemini":
-                model = GeminiAPIModel()
-            else:
-                model = HFModel(model_name=model_name)
-        except (ValueError, ImportError) as e:
-            logging.error(f"Could not load model '{model_name}'. Skipping. Reason: {e}")
-            continue
-
-        for task_name in task_list:
-            print(f"\n--- Running task: {task_name} ---")
-            tasks = get_tasks(tasks=[task_name])
-            evaluation = COIR(tasks=tasks, batch_size=100)
-            
-            output_folder = f"results/{safe_model_name}"
-            # The Dockerfile creates the base 'results' directory
-            os.makedirs(output_folder, exist_ok=True)
-            
-            results = evaluation.run(model, output_folder=output_folder)
-            print(f"--- Finished task: {task_name} ---\nResults: {results}")
-
-    print("\n✅ All evaluations complete!")
-
-
-# --- Visualization Functions (MODIFIED TO SAVE PLOTS) ---
-def load_all_results_for_task(task_name: str, model_list: List[str]) -> Dict:
+def load_all_results_for_task(task_name, model_list):
     """Loads all result files for a given task from the results directory."""
     all_results = {}
     for model_name in model_list:
         safe_model_name = model_name.replace('/', '_')
         file_path = Path(f"results/{safe_model_name}/{task_name}.json")
-        if file_path.exists():
-            with open(file_path, 'r') as f:
-                all_results[model_name] = json.load(f).get("metrics", {})
-        else:
-            print(f"Warning: Result file not found for model '{model_name}'. Skipping from plot.")
+        if not file_path.exists():
+            print(f"Warning: Result file not found for model '{model_name}' at {file_path}. Skipping.")
+            continue
+        with open(file_path, 'r') as f:
+            data = json.load(f)
+            all_results[model_name] = data["metrics"]
+            print(all_results)
     return all_results
 
-def plot_full_comparison(task_name: str, model_list: List[str]):
-    """Generates and saves a plot comparing models across all K values for a task."""
+def plot_full_comparison(task_name, model_list):
+    """Generates and shows a plot comparing all models across all K values for a task."""
     comparison_data = load_all_results_for_task(task_name, model_list)
     if not comparison_data:
         print(f"No data to plot for task: {task_name}")
         return
 
     metric_names = list(next(iter(comparison_data.values())).keys())
-    fig, axes = plt.subplots(2, 2, figsize=(20, 16), constrained_layout=True)
+    fig, axes = plt.subplots(2, 2, figsize=(20, 16))
     axes = axes.flatten()
-    fig.suptitle(f'Model Comparison on "{task_name}" Task', fontsize=20)
+    fig.suptitle(f'Model Comparison on "{task_name}" Task', fontsize=20, y=0.95)
 
     for i, metric_name in enumerate(metric_names):
         ax = axes[i]
-        k_vals_for_ticks = set()
         for model_name, metrics in comparison_data.items():
             if metric_name in metrics:
-                values_dict = metrics[metric_name]
-                k_values, scores = [], []
+                values_dict, k_values, scores = metrics[metric_name], [], []
                 for key, score in values_dict.items():
                     match = re.search(r'\d+$', key)
                     if match:
-                        k = int(match.group())
-                        k_values.append(k)
+                        k_values.append(int(match.group()))
                         scores.append(score)
-                        k_vals_for_ticks.add(k)
                 if k_values:
                     sorted_pairs = sorted(zip(k_values, scores))
                     k_vals, score_vals = zip(*sorted_pairs)
                     ax.plot(k_vals, score_vals, marker='o', linestyle='-', label=model_name)
-        
+
+        all_k = sorted(list(set(k_vals)))
+        ax.set_xscale('log')
+        ax.set_xticks(all_k)
+        ax.set_xticklabels(all_k, rotation=45)
         ax.set_title(f'{metric_name} vs. K', fontsize=16)
         ax.set_xlabel('K (cutoff)', fontsize=12)
         ax.set_ylabel('Score', fontsize=12)
-        ax.grid(True, which="both", ls="--")
+        ax.grid(True, which="both", ls="--", c='0.7')
         ax.legend(fontsize=10)
-        
-        if k_vals_for_ticks:
-            all_k = sorted(list(k_vals_for_ticks))
-            ax.set_xscale('log')
-            ax.set_xticks(all_k)
-            ax.set_xticklabels(all_k, rotation=45)
-    
-    output_path = f"output_plots/{task_name}_full_comparison.png"
-    plt.savefig(output_path)
-    plt.close(fig) # Free up memory
-    print(f"Saved full comparison plot to {output_path}")
 
-def plot_k1_comparison(task_name: str, model_list: List[str]):
-    """Generates and saves a bar chart comparing all models at K=1."""
+    plt.tight_layout(rect=[0, 0, 1, 0.93])
+    plt.show()
+
+def plot_k1_comparison(task_name, model_list):
+    """Generates and shows a bar chart comparing all models at K=1."""
     comparison_data = load_all_results_for_task(task_name, model_list)
     if not comparison_data:
-        print(f"No K=1 data to plot for task: {task_name}")
+        print(f"No data to plot for task: {task_name}")
         return
 
     metrics_at_1 = ['NDCG@1', 'MAP@1', 'Recall@1', 'P@1']
-    valid_models = [m for m in model_list if m in comparison_data]
-    plot_data = {model: [] for model in valid_models}
+    plot_data = {model: [] for model in model_list if model in comparison_data}
 
     for metric_key in metrics_at_1:
         main_metric = metric_key.split('@')[0]
-        if main_metric == "P": main_metric = "Precision"
-        for model_name in valid_models:
-            plot_data[model_name].append(comparison_data[model_name].get(main_metric, {}).get(metric_key, 0))
-    
-    if not any(plot_data.values()):
-        print(f"No valid K=1 data found for any model on task {task_name}.")
-        return
+        if main_metric == "P":
+            main_metric = "Precision"
+        for model_name, all_metrics in comparison_data.items():
+            score = all_metrics.get(main_metric, {}).get(metric_key, 0)
+            plot_data[model_name].append(score)
 
     fig, ax = plt.subplots(figsize=(15, 8))
-    num_models = len(valid_models)
-    bar_width = 0.2
+    num_models = len(plot_data)
+    bar_width = 0.25
     index = np.arange(len(metrics_at_1))
-    
+
     for i, (model_name, scores) in enumerate(plot_data.items()):
         pos = index - ((num_models - 1) * bar_width / 2) + (i * bar_width)
         bars = ax.bar(pos, scores, bar_width, label=model_name)
         ax.bar_label(bars, padding=3, fmt='%.3f', fontsize=10)
-        
-    ax.set_title(f'Model Comparison at K=1 for "{task_name}" Task', fontsize=18, pad=20)
+
+    ax.set_title(f'Model Comparison at K=1 for "{TASK_TO_VISUALIZE}" Task', fontsize=18, pad=20)
     ax.set_ylabel('Scores', fontsize=14)
     ax.set_xlabel('Metrics', fontsize=14)
     ax.set_xticks(index)
     ax.set_xticklabels(metrics_at_1, fontsize=12)
-    ax.legend(title='Models', bbox_to_anchor=(1.04, 1), loc="upper left")
-    ax.yaxis.grid(True, linestyle='--', alpha=.25)
-    max_score = max(max(s) for s in plot_data.values() if s) if any(any(s) for s in plot_data.values()) else 1
-    ax.set_ylim(bottom=0, top=max_score * 1.15)
+    ax.legend(title='Models', bbox_to_anchor=(1.04, 1), loc="upper left", fontsize=12)
+    ax.yaxis.grid(True, linestyle='--', which='major', color='grey', alpha=.25)
+    ax.set_ylim(bottom=0, top=max(max(s) for s in plot_data.values()) * 1.15 if plot_data else 1)
+
     plt.tight_layout(rect=[0, 0, 0.85, 1])
+    plt.show()
 
-    output_path = f"output_plots/{task_name}_k1_comparison.png"
-    plt.savefig(output_path)
-    plt.close(fig) # Free up memory
-    print(f"Saved K=1 comparison plot to {output_path}")
+print("\n--- Generating Visualizations ---")
+# --- Step 5: Run Visualizations for Each Task ---
+for TASK_TO_VISUALIZE in TASKS_TO_EVALUATE:
+    print(f"\n\n{'#'*40}\n# Visualizing results for: {TASK_TO_VISUALIZE}\n{'#'*40}")
+    plot_full_comparison(TASK_TO_VISUALIZE, MODELS_TO_EVALUATE)
+    plot_k1_comparison(TASK_TO_VISUALIZE, MODELS_TO_EVALUATE)
 
-def run_visualizations(model_list: List[str], task_list: List[str]):
-    """Generates and saves plots for each task's results."""
-    print("\n--- Generating Visualizations ---")
-    # The Dockerfile creates the base 'output_plots' directory
-    # os.makedirs("output_plots", exist_ok=True)
-    for task_name in task_list:
-        print(f"\n# Visualizing results for: {task_name}")
-        plot_full_comparison(task_name, model_list)
-        plot_k1_comparison(task_name, model_list)
-    print("\n✅ All visualizations generated.")
-
-if __name__ == "__main__":
-    # Step 1: Run evaluations and save results to the 'results/' directory
-    run_evaluations(MODELS_TO_EVALUATE, TASKS_TO_EVALUATE)
-
-    # Step 2: Generate plots from the results and save them to 'output_plots/'
-    run_visualizations(MODELS_TO_EVALUATE, TASKS_TO_EVALUATE)
-
-    print("\n✅ Script finished successfully.")
+print("\n✅ All tasks complete.")
